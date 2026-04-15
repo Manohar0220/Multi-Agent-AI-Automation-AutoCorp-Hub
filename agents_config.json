@@ -1,0 +1,22 @@
+{
+    "auto_mail_reply": {
+        "active": false,
+        "mode": "specific",
+        "emails": [
+            ""
+        ]
+    },
+    "meeting_scheduler": {
+        "active": true,
+        "mode": "specific",
+        "emails": [
+            ""
+        ]
+    },
+    "hr_document_request": {
+        "active": true,
+        "allowed_emails": [
+            ""
+        ]
+    }
+}

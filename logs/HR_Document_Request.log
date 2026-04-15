@@ -1,0 +1,46 @@
+Script started
+Loaded allowed HR emails: ['harshitha.attanti1@gmail.com']
+entered document request function
+getting unread emails
+ Checking unread mails for HR document requests...
+--- Processing Message ---
+Subject: Request: resume.txt
+Sender: Harshitha Attanti <harshitha.attanti1@gmail.com>
+Request: resume.txt
+ Requested file from harshitha.attanti1@gmail.com: resume.txt
+ Sent resume.txt to harshitha.attanti1@gmail.com
+ Replied to harshitha.attanti1@gmail.com with 'resume.txt'
+--- Processing Message ---
+Subject: Launch Your Engineering Career with Rolls-Royce
+Sender: Rolls-Royce via WayUp <info@wayup.com>
+Skipping info@wayup.com — not in allowed HR sender list.
+--- Processing Message ---
+Subject: Don't Miss Black Friday Early Access in Store at Denver Premium Outlets
+Sender: Calvin Klein Outlet <calvinklein@em.calvinklein.com>
+Skipping calvinklein@em.calvinklein.com — not in allowed HR sender list.
+--- Processing Message ---
+Subject: Become a Medical Coder, Financial Aid May Be Available
+Sender: Medical Coding School <ezines@arcamax.com>
+Skipping ezines@arcamax.com — not in allowed HR sender list.
+--- Processing Message ---
+Subject: 20% Cash Back at iHerb is here!
+Sender: Rakuten Big Deal Reveal <emails@emails.rakuten.com>
+Skipping emails@emails.rakuten.com — not in allowed HR sender list.
+--- Processing Message ---
+Subject: Start Earning KORSVIP Points
+Sender: Michael Kors <MichaelKors@michaelkorsmail.com>
+Skipping michaelkors@michaelkorsmail.com — not in allowed HR sender list.
+--- Processing Message ---
+Subject: Manohar, do you know what factors are affecting your score?
+Sender: Chase Credit Journey <no_reply@mcmap.chase.com>
+Skipping no_reply@mcmap.chase.com — not in allowed HR sender list.
+--- Processing Message ---
+ Error processing message: 'charmap' codec can't encode characters in position 60-61: character maps to <undefined>
+--- Processing Message ---
+Subject: Update on our Award Flights, Mr. Korikana
+Sender: "Miles & More Newsletter" <newsletter@mailing.milesandmore.com>
+Skipping newsletter@mailing.milesandmore.com — not in allowed HR sender list.
+--- Processing Message ---
+Subject: Stay a step ahead with the Galaxy S25+
+Sender: Boost <ezines@arcamax.com>
+Skipping ezines@arcamax.com — not in allowed HR sender list.

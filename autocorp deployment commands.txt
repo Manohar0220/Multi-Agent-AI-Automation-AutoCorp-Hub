@@ -1,0 +1,249 @@
+# Install gcloud CLI (if not already)
+https://cloud.google.com/sdk/docs/install
+
+# Verify installation
+gcloud version
+
+# Authenticate your account
+gcloud auth login
+
+# Set your GCP project
+gcloud config set project autocorp-476900
+
+#enable required gcp apis 
+gcloud services enable container.googleapis.com sqladmin.googleapis.com compute.googleapis.com
+
+# Build your Docker image for Streamlit app
+docker build -t autocorp-app:latest .
+
+# Tag image for Artifact Registry
+docker tag autocorp-app:latest us-central1-docker.pkg.dev/autocorp-476900/autocorp-repo/autocorp-hub:latest
+
+# Push to GCP Artifact Registry
+docker push us-central1-docker.pkg.dev/autocorp-476900/autocorp-repo/autocorp-hub:latest
+
+# Create Kubernetes cluster
+gcloud container clusters create autocorp-cluster \
+  --zone=us-central1-a \
+  --num-nodes=2 \
+  --machine-type=e2-standard-2
+
+# Get credentials to interact with cluster
+gcloud container clusters get-credentials autocorp-cluster --zone us-central1-a
+
+# Create PostgreSQL credentials secret
+kubectl create secret generic autocorp-secrets \
+  --from-literal=PGPASSWORD='your_postgres_password'
+
+# Create GCP credentials secret for Cloud SQL proxy
+kubectl create secret generic gcp-creds \
+  --from-file=autocorp_storage.json=autocorp_storage.json
+
+#Verify
+kubectl get secrets
+
+#Deploy
+kubectl apply -f deployment.yaml
+kubectl apply -f service.yaml
+
+# Check pods
+kubectl get pods
+
+# Check service
+kubectl get svc autocorp-service
+
+# Create Cloud SQL instance
+gcloud sql instances create autocorp-db \
+  --database-version=POSTGRES_15 \
+  --tier=db-g1-small \
+  --region=us-central1
+
+# Create database inside instance
+gcloud sql databases create autocorp --instance=autocorp-db
+
+# Create user
+gcloud sql users create autocorp_user --instance=autocorp-db --password='yourpassword'
+
+#grant permissions to service account
+PROJECT_ID=autocorp-476900
+SA_EMAIL=autocorp-storage-agent@autocorp-476900.iam.gserviceaccount.com
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/cloudsql.client"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/cloudsql.instanceUser"
+
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/cloudsql.editor"
+
+# Connect with temporary whitelist
+gcloud sql connect autocorp-db --user=autocorp_user --database=autocorp
+
+##Inside database operations
+#list all databses
+\l
+
+#connect to a database
+\c autocorp;
+
+#list tables
+\dt
+
+#view columns
+\d employees;
+
+#Insert data example 
+INSERT INTO employees (name, email, department)
+VALUES ('John Doe', 'john.doe@autocorp.com', 'HR');
+
+#update record example 
+UPDATE employees
+SET department = 'HR Automation'
+WHERE email = 'john.doe@autocorp.com';
+
+#delete record example
+DELETE FROM employees WHERE email='john.doe@autocorp.com';
+
+#verify change 
+SELECT * FROM employees;
+
+#quit 
+\q
+
+##View Logs and debugging
+# See running pods
+kubectl get pods
+
+# Stream logs from app container
+kubectl logs -l app=autocorp -c autocorp -f
+
+# Stream logs from Cloud SQL proxy
+kubectl logs -l app=autocorp -c cloudsql-proxy -f
+
+
+##Optional Clean Up Commands 
+kubectl delete -f deployment.yaml
+kubectl delete -f service.yaml
+gcloud container clusters delete autocorp-cluster --zone=us-central1-a
+gcloud sql instances delete autocorp-db
+
+
+##Cloud SQL Proxy – Setup, IAM, and Kubernetes Integration (Complete Guide)
+#enable cloud SQL API
+gcloud services enable sqladmin.googleapis.com
+
+#create a service account for proxy
+gcloud iam service-accounts create autocorp-storage-agent \
+  --description="Service account for connecting to Cloud SQL from GKE" \
+  --display-name="AutoCorp Cloud SQL Proxy"
+
+#grant required IAM roles
+PROJECT_ID=autocorp-476900
+SA_EMAIL=autocorp-storage-agent@${PROJECT_ID}.iam.gserviceaccount.com
+
+# Allow connecting to Cloud SQL instances
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/cloudsql.client"
+
+# Allow acting as SQL instance user
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/cloudsql.instanceUser"
+
+# Optional but useful for admin-level debugging
+gcloud projects add-iam-policy-binding $PROJECT_ID \
+  --member="serviceAccount:$SA_EMAIL" \
+  --role="roles/cloudsql.editor"
+
+
+#download the service account key (json)
+gcloud iam service-accounts keys create autocorp_storage.json \
+  --iam-account=$SA_EMAIL
+
+#create Kubernetes secret with credentials
+kubectl create secret generic gcp-creds \
+  --from-file=autocorp_storage.json=autocorp_storage.json
+
+#verify:
+kubectl get secrets
+
+#Add Cloud SQL Proxy as a Sidecar Container in Deployment
+Add this block to your deployment.yaml:
+
+- name: cloudsql-proxy
+  image: gcr.io/cloud-sql-connectors/cloud-sql-proxy:2.8.0
+  args:
+    - "autocorp-476900:us-central1:autocorp-db"
+    - "--credentials-file=/secrets/autocorp_storage.json"
+  securityContext:
+    runAsNonRoot: true
+
+--------------Mount the secret volume: ---------
+
+volumes:
+  - name: gcp-creds
+    secret:
+      secretName: gcp-creds
+
+---------------  Mount it inside both containers: -------------
+
+volumeMounts:
+  - name: gcp-creds
+    mountPath: /secrets
+    readOnly: true
+
+------------------- Ensure your app connects via localhost:------------
+
+- name: PGHOST
+  value: "127.0.0.1"
+
+
+#Deploy updated configuration
+kubectl apply -f deployment.yaml
+kubectl get pods
+kubectl get svc
+
+#Verify cloud SQL proxy is working 
+kubectl logs -l app=autocorp -c cloudsql-proxy -f
+
+#verify database access from inside pod
+kubectl exec -it $(kubectl get pods -l app=autocorp -o jsonpath="{.items[0].metadata.name}") -c autocorp -- bash
+apt-get update && apt-get install -y postgresql-client
+psql -h 127.0.0.1 -U autocorp_user -d autocorp
+
+#check connection
+\dt;
+SELECT * FROM employees;
+
+#restart deployment and updates 
+kubectl rollout restart deployment autocorp-app
+kubectl logs -l app=autocorp -c cloudsql-proxy -f
+
+
+##Check logs of the whole streamlit app container
+kubectl get pods
+kubectl logs <pod-name> -c autocorp
+
+kubectl logs autocorp-app-7775565f48-ttc48 -c autocorp
+
+kubectl logs -f autocorp-app-7775565f48-ttc48 -c autocorp
+
+##OPTIONAL PORT FORWARDING
+#so now you get url in output, but it will be inside Kubernetes and not accessible in machine, so will port forward it to see on machine, 
+#change port value to 8501 in service.yaml, save it and run
+kubectl apply -f autocorp-service.yaml
+kubectl port-forward service/autocorp-service 8501:8501
+#now open http://localhost:8501
+
+#to view cloud sql logs 
+gcloud sql operations list --instance=autocorp-db
+
+
+
+
+
