@@ -7,7 +7,6 @@ from mail import gmail_service, get_unread_emails, read_email, send_auto_reply, 
 import json
 
 
-print("Script started")
 from dotenv import load_dotenv
 load_dotenv()
 
@@ -18,25 +17,23 @@ from storage_client import fetch_employee_file, list_employee_files
 
 LOG_FILE = "logs/hr_doc_request.log"
 
-# Gmail scopes: read/modify + send
 SCOPES = [
     "https://www.googleapis.com/auth/gmail.modify",
     "https://www.googleapis.com/auth/gmail.send",
 ]
-
 
 CONFIG_FILE = "agents_config.json"
 GMAIL_USER = os.getenv("GMAIL_USER")
 PROCESSED_LABEL = os.getenv("GMAIL_PROCESSED_LABEL", "HR-Auto/Processed")
 
 
-if os.path.exists(CONFIG_FILE):
-    with open(CONFIG_FILE, "r") as f:
-        config = json.load(f)
-    hr_conf = config.get("hr_document_request", {})
-    ALLOWED_EMAILS = [e.lower() for e in hr_conf.get("allowed_emails", [])]
-
-print(f"Loaded allowed HR emails: {ALLOWED_EMAILS}")
+def load_allowed_emails():
+    if os.path.exists(CONFIG_FILE):
+        with open(CONFIG_FILE, "r") as f:
+            config = json.load(f)
+        hr_conf = config.get("hr_document_request", {})
+        return [e.lower() for e in hr_conf.get("allowed_emails", [])]
+    return []
 
 def send_reply_with_attachment(service, to_addr, subject, body_text, attachment_bytes, filename, mime):
     """Send reply email with attachment."""
@@ -59,7 +56,9 @@ def send_reply_with_attachment(service, to_addr, subject, body_text, attachment_
 
 # ---------------- Main processing ----------------
 
-def process_document_requests():
+def process_document_requests(allowed_emails=None):
+    if allowed_emails is None:
+        allowed_emails = load_allowed_emails()
     print("entered document request function")
     service = gmail_service()
     print("getting unread emails")
@@ -81,7 +80,7 @@ def process_document_requests():
                 continue
 
             sender_email = sender.split("<")[-1].replace(">", "").strip().lower()
-            if sender_email not in ALLOWED_EMAILS:
+            if sender_email not in allowed_emails:
                 print(f"Skipping {sender_email} — not in allowed HR sender list.")
                 mark_as_read(service, msg_id)
                 continue
@@ -150,5 +149,8 @@ def process_document_requests():
 # Entry Point
 # ---------------------------------------------------------------------
 if __name__ == "__main__":
-    process_document_requests()
+    print("Script started")
+    allowed = load_allowed_emails()
+    print(f"Loaded allowed HR emails: {allowed}")
+    process_document_requests(allowed)
  

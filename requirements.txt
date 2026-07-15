@@ -4,6 +4,10 @@ streamlit==1.39.0
 protobuf==5.28.3
 requests==2.32.3
 
+# LangGraph orchestration
+langgraph>=0.2.0
+langchain-core>=0.3.0
+
 # Google API libraries
 google-auth==2.35.0
 google-auth-oauthlib==1.2.1

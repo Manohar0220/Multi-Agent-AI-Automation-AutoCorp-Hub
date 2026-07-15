@@ -1,5 +1,5 @@
 import streamlit as st
-import json, os, subprocess, time
+import json, os, time, threading
 
 CONFIG_FILE = "agents_config.json"
 LOG_DIR = "logs"
@@ -23,13 +23,25 @@ def save_config(config):
     with open(CONFIG_FILE, "w") as f:
         json.dump(config, f, indent=4)
 
-def run_agent(agent_name):
-    """Launch an agent in background and redirect logs"""
-    os.makedirs(LOG_DIR, exist_ok=True)
-    log_file = os.path.join(LOG_DIR, f"{agent_name}.log")
-    with open(log_file, "w", encoding="utf-8") as log:
-        subprocess.Popen(["python", f"{agent_name}.py"], stdout=log, stderr=log)
-    st.toast(f"🚀 {agent_name}.py started successfully!", icon="✅")
+def run_orchestrator_background(config):
+    """Run the LangGraph orchestrator in a background thread and write results to log."""
+    from orchestrator import run_orchestrator
+    try:
+        results = run_orchestrator(config)
+        log_file = os.path.join(LOG_DIR, "orchestrator.log")
+        with open(log_file, "a", encoding="utf-8") as f:
+            for line in results:
+                f.write(line + "\n")
+    except Exception as e:
+        log_file = os.path.join(LOG_DIR, "orchestrator.log")
+        with open(log_file, "a", encoding="utf-8") as f:
+            f.write(f"ERROR: {e}\n")
+
+def run_agents(config):
+    """Launch the LangGraph orchestrator to process all active agents."""
+    thread = threading.Thread(target=run_orchestrator_background, args=(config,), daemon=True)
+    thread.start()
+    st.toast("🚀 LangGraph orchestrator started!", icon="✅")
 
 def read_logs(agent_name):
     """Safely read log contents"""
@@ -37,7 +49,7 @@ def read_logs(agent_name):
     if not os.path.exists(log_file):
         return "No logs yet for this agent."
     with open(log_file, "r", encoding="utf-8", errors="ignore") as f:
-        return f.read()[-4000:]  # show last 4 KB
+        return f.read()[-4000:]
 
 # --------------------------- Sidebar navigation -------------------------- #
 st.sidebar.title("AutoCorp Hub")
@@ -114,11 +126,8 @@ if page == "AI Automation Agents":
     if st.button("💾 Save & Run Active Agents"):
         save_config(config)
         st.success("Configuration saved successfully!")
-        if config["auto_mail_reply"]["active"]:
-            run_agent("mail")
-        if config["meeting_scheduler"]["active"]:
-            run_agent("meeting_scheduler")
-        st.info("✅ Active agents launched in background.")
+        run_agents(config)
+        st.info("✅ LangGraph orchestrator processing active agents.")
 
 # --------------------------- Page 2: HR Agents --------------------------- #
 elif page == "HR Agents":
@@ -150,9 +159,8 @@ elif page == "HR Agents":
     if st.button("💾 Save & Run HR Agent"):
         save_config(config)
         st.success("Configuration saved successfully!")
-        if config["hr_document_request"]["active"]:
-            run_agent("HR_Document_Request")
-        st.info("✅ HR Document Request agent started.")
+        run_agents(config)
+        st.info("✅ LangGraph orchestrator processing HR agent.")
 
     st.divider()
     st.subheader("🧾 HR Document Request Logs")
@@ -163,6 +171,13 @@ elif page == "HR Agents":
 elif page == "Dashboard":
     st.title("📊 Active Agents Dashboard")
     st.caption("Monitor currently active agents and inspect their logs.")
+    st.divider()
+
+    # Orchestrator log
+    with st.expander("🔗 LangGraph Orchestrator", expanded=True):
+        orchestrator_log = read_logs("orchestrator")
+        st.text_area("Orchestrator Log", orchestrator_log, height=200)
+
     st.divider()
 
     active_agents = []

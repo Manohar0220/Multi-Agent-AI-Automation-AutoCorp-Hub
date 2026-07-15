@@ -19,8 +19,6 @@ CONFIG_FILE = "agents_config.json"
 
 LOG_FILE = "logs/meeting_scheduler.log"
 os.makedirs("logs", exist_ok=True)
-sys.stdout = open(LOG_FILE, "w",encoding="utf-8", buffering=1)  # redirect prints to file
-sys.stderr = sys.stdout
 
 # ------------------------------------------------------------------
 # Calendar Authentication
@@ -188,4 +186,6 @@ def main():
 
 
 if __name__ == "__main__":
+    sys.stdout = open(LOG_FILE, "w", encoding="utf-8", buffering=1)
+    sys.stderr = sys.stdout
     main()
