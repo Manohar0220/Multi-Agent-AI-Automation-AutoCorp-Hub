@@ -1,12 +1,12 @@
 # AutoCorp Hub
 
-An AI-powered automation platform for corporate workflows — built with Python, Streamlit, Gmail API, Google Calendar API, PostgreSQL, and Google Cloud Storage.
+An AI-powered automation platform for corporate workflows — built with Python, Streamlit, LangGraph, Gmail API, Google Calendar API, PostgreSQL, and Google Cloud Storage.
 
 ---
 
 ## Overview
 
-AutoCorp Hub is a multi-agent automation system controlled through a Streamlit dashboard. It runs background agents that monitor a Gmail inbox and automatically handle email replies, meeting scheduling, and HR document requests.
+AutoCorp Hub is a multi-agent automation system orchestrated through **LangGraph** and controlled via a Streamlit dashboard. A LangGraph `StateGraph` fetches unread emails, classifies them by intent, and routes each to the appropriate agent node — handling email replies, meeting scheduling, and HR document requests in a single coordinated pipeline.
 
 ---
 
@@ -15,6 +15,7 @@ AutoCorp Hub is a multi-agent automation system controlled through a Streamlit d
 ```
 autocorp-hub/
 ├── app.py                    # Streamlit dashboard (control plane)
+├── orchestrator.py           # LangGraph StateGraph orchestrator
 ├── mail.py                   # Auto Mail Reply agent
 ├── meeting_scheduler.py      # Meeting Scheduler agent
 ├── HR_Document_Request.py    # HR Document Request agent
@@ -35,6 +36,7 @@ autocorp-hub/
 │   ├── configmap.yaml
 │   └── secret.yaml
 └── logs/                     # Agent log files (auto-generated)
+    ├── orchestrator.log
     ├── mail.log
     ├── meeting_scheduler.log
     └── HR_Document_Request.log
@@ -72,22 +74,44 @@ Allows authorized HR staff to request employee documents via email.
 
 ---
 
-## Pipeline Flow
+## Orchestration (LangGraph)
+
+The orchestrator (`orchestrator.py`) defines a LangGraph `StateGraph` with conditional routing:
 
 ```
-Streamlit Dashboard (app.py)
-    └── agents_config.json
-            ├── mail.py
-            │     └── Gmail API → filter → auto-reply → mark read
-            │
-            ├── meeting_scheduler.py
-            │     └── Gmail API → detect meeting request
-            │           └── Google Calendar API → check conflict → book / notify
-            │
-            └── HR_Document_Request.py
-                  └── Gmail API → validate sender
-                        └── PostgreSQL → resolve employee_id
-                              └── GCS → fetch file → reply with attachment
+[START]
+   │
+   ▼
+fetch_emails ──── (no emails?) ───► [END]
+   │
+   ▼
+classify_emails
+   │  (rule-based: subject contains "schedule a meet" → meeting,
+   │   subject matches "Request: ..." → HR, else → auto-reply)
+   │
+   ▼
+process_meetings
+   │  └── Google Calendar API → check conflict → book / notify
+   ▼
+process_hr_requests
+   │  └── PostgreSQL → resolve employee_id → GCS → fetch file → reply with attachment
+   ▼
+process_auto_replies
+   │  └── Gmail API → send canned reply → mark read
+   ▼
+[END]
+```
+
+Each node only processes emails classified for it. The Streamlit dashboard invokes `run_orchestrator(config)` which compiles and runs the graph in a background thread.
+
+## Pipeline Flow (Legacy)
+
+Individual agents can still be run standalone:
+
+```
+python mail.py
+python meeting_scheduler.py
+python HR_Document_Request.py
 ```
 
 ---
@@ -223,6 +247,7 @@ The dashboard writes this file on save. You can also edit it manually:
 
 | Layer | Technology |
 |---|---|
+| Orchestration | LangGraph (StateGraph) |
 | Dashboard | Streamlit |
 | Email | Gmail API (OAuth2) |
 | Calendar | Google Calendar API |
