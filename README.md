@@ -1,12 +1,16 @@
 # AutoCorp Hub
 
-An AI-powered automation platform for corporate workflows — built with Python, Streamlit, LangGraph, Gmail API, Google Calendar API, PostgreSQL, and Google Cloud Storage.
+An AI-powered multi-agent automation platform for corporate workflows — built with Python, Streamlit, LangGraph, Gemini AI, ChromaDB, Neo4j, Gmail API, Google Calendar API, PostgreSQL, and Google Cloud Storage.
 
 ---
 
 ## Overview
 
-AutoCorp Hub is a multi-agent automation system orchestrated through **LangGraph** and controlled via a Streamlit dashboard. A LangGraph `StateGraph` fetches unread emails, classifies them by intent, and routes each to the appropriate agent node — handling email replies, meeting scheduling, and HR document requests in a single coordinated pipeline.
+AutoCorp Hub is a multi-agent automation system with two major capabilities:
+
+1. **Email Automation** — Orchestrated through **LangGraph**, a `StateGraph` fetches unread emails, classifies them by intent, and routes each to the appropriate agent node (auto-reply, meeting scheduling, HR document requests).
+
+2. **Knowledge Base (Hybrid RAG)** — Employees can upload documents that get processed through dual pipelines (Vector DB + Knowledge Graph), then ask natural-language questions answered via hybrid retrieval with Gemini 2.5 Flash.
 
 ---
 
@@ -19,15 +23,18 @@ autocorp-hub/
 ├── mail.py                   # Auto Mail Reply agent
 ├── meeting_scheduler.py      # Meeting Scheduler agent
 ├── HR_Document_Request.py    # HR Document Request agent
+├── knowledge_base.py         # Knowledge Base UI + pipeline orchestration
+├── kb_config.py              # KB configuration & client initialization
+├── kb_vector_store.py        # Chunking, Gemini embeddings, ChromaDB
+├── kb_knowledge_graph.py     # Entity extraction, Neo4j graph operations
+├── kb_query_engine.py        # Hybrid retrieval, reranking, answer generation
 ├── db.py                     # PostgreSQL connection & queries
 ├── storage_client.py         # Google Cloud Storage client
 ├── parse_filename.py         # Email subject parser utility
 ├── agents_config.json        # Runtime config for all agents
-├── .env                      # Environment variables
-├── credentials.json          # Google OAuth2 credentials
-├── token.json                # Gmail OAuth token
-├── calendar_token.json       # Google Calendar OAuth token
-├── autocorp_storage.json     # GCP service account key
+├── .env                      # Environment variables (not committed)
+├── .gitignore                # Git ignore rules
+├── credentials.json          # Google OAuth2 credentials (not committed)
 ├── requirements.txt          # Python dependencies
 ├── Dockerfile                # Container image definition
 ├── k8s/                      # Kubernetes deployment manifests
@@ -35,6 +42,7 @@ autocorp-hub/
 │   ├── service.yaml
 │   ├── configmap.yaml
 │   └── secret.yaml
+├── chroma_data/              # ChromaDB persistent storage (auto-generated)
 └── logs/                     # Agent log files (auto-generated)
     ├── orchestrator.log
     ├── mail.log
@@ -85,14 +93,54 @@ A hybrid RAG system where employees can upload documents and ask natural-languag
 3. Results merged → LLM-based reranking → Context compression
 4. Grounded context → Gemini 2.5 Flash → Answer with citations
 
+**Upload Architecture (dual pipeline, parallel):**
+```
+Employee uploads document (PDF/DOCX/TXT/CSV)
+        │
+   extract_text_from_file()
+        │
+        ├──── Thread 1: Vector Pipeline ────────────────────────┐
+        │     RecursiveCharacterTextSplitter (1000 chars, 200 overlap)
+        │         │                                             │
+        │     Gemini text-embedding-004 (batch, 20/request)     │
+        │         │                                             │
+        │     ChromaDB upsert (cosine similarity)               │
+        │                                                       │
+        └──── Thread 2: Knowledge Graph Pipeline ───────────────┘
+              Split into 6000-char sections
+                  │
+              Gemini 2.5 Flash → extract entities & relationships (JSON)
+                  │
+              Neo4j MERGE nodes + CREATE relationships
+```
+
+**Query Architecture (hybrid retrieval):**
+```
+Employee asks a question
+        │
+   Gemini text-embedding-004 (task_type="retrieval_query")
+        │
+        ├──── ChromaDB similarity search (top 10 chunks)
+        │
+        ├──── Neo4j graph traversal:
+        │       Gemini extracts entities from query
+        │       → fuzzy match nodes → 1-hop outgoing + incoming relationships
+        │
+   Combine results → LLM-based reranking (Gemini re-scores by relevance)
+        │
+   Context compression (dedup + token budget)
+        │
+   Gemini 2.5 Flash → grounded answer with citations
+```
+
 **Modules:**
 | File | Purpose |
 |------|---------|
-| `kb_config.py` | Configuration, API keys, client initialization |
-| `kb_vector_store.py` | Chunking, embedding, ChromaDB operations |
-| `kb_knowledge_graph.py` | Neo4j entity extraction, storage, graph queries |
-| `kb_query_engine.py` | Retrieval, reranking, compression, answer generation |
-| `knowledge_base.py` | Streamlit UI page and pipeline orchestration |
+| `kb_config.py` | Configuration, API keys, lazy client initialization |
+| `kb_vector_store.py` | Chunking, Gemini embedding, ChromaDB storage/retrieval |
+| `kb_knowledge_graph.py` | Entity/relationship extraction, Neo4j storage, graph traversal |
+| `kb_query_engine.py` | Hybrid retrieval, LLM reranking, context compression, answer generation |
+| `knowledge_base.py` | Streamlit UI (upload + chat) and pipeline orchestration |
 
 ---
 
@@ -145,6 +193,8 @@ python HR_Document_Request.py
 - PostgreSQL database with an `employees` table
 - Google Cloud project with Gmail API, Calendar API, and Cloud Storage enabled
 - GCP service account with access to the GCS bucket
+- Gemini API key (for Knowledge Base)
+- Neo4j instance (local Docker or Aura cloud — for Knowledge Graph RAG)
 
 ### 1. Install dependencies
 
@@ -157,31 +207,38 @@ pip install -r requirements.txt
 Copy and fill in `.env`:
 
 ```env
+# Email Agents
 GMAIL_TOKEN_FILE=token.json
 GMAIL_CREDENTIALS_FILE=credentials.json
 SENDER_EMAIL=your@email.com
+GMAIL_USER=your@email.com
+GMAIL_PROCESSED_LABEL=HR-Auto/Processed
 
+# Google Calendar
 CALENDAR_CREDENTIALS_FILE=credentials.json
 CALENDAR_TOKEN_FILE=calendar_token.json
 
+# PostgreSQL
 PGHOST=127.0.0.1
 PGPORT=5432
 PGDATABASE=hr
 PGUSER=postgres
 PGPASSWORD=yourpassword
 
+# Google Cloud Storage
 GCP_PROJECT_ID=your-gcp-project-id
 GCS_BUCKET=your-bucket-name
 GOOGLE_APPLICATION_CREDENTIALS=autocorp_storage.json
 
-GMAIL_USER=your@email.com
-GMAIL_PROCESSED_LABEL=HR-Auto/Processed
-
-# Knowledge Base
+# Knowledge Base — Gemini AI
 GEMINI_API_KEY=your_gemini_api_key
+
+# Knowledge Base — Neo4j
 NEO4J_URI=bolt://localhost:7687
 NEO4J_USER=neo4j
 NEO4J_PASSWORD=your_neo4j_password
+
+# Knowledge Base — ChromaDB
 CHROMA_PERSIST_DIR=./chroma_data
 ```
 
@@ -189,7 +246,18 @@ CHROMA_PERSIST_DIR=./chroma_data
 
 Place your `credentials.json` (OAuth2 client) in the project root. On first run, each agent will open a browser window to authorize access and save tokens (`token.json`, `calendar_token.json`).
 
-### 4. Run the dashboard
+### 4. Set up Neo4j (for Knowledge Base)
+
+```bash
+docker run -d --name neo4j \
+  -p 7474:7474 -p 7687:7687 \
+  -e NEO4J_AUTH=neo4j/your_neo4j_password \
+  neo4j:latest
+```
+
+Or use [Neo4j Aura](https://neo4j.com/cloud/aura/) (free tier available) and set `NEO4J_URI` to your cloud instance.
+
+### 5. Run the dashboard
 
 ```bash
 streamlit run app.py
