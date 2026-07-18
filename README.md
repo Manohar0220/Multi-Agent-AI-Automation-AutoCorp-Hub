@@ -72,6 +72,28 @@ Allows authorized HR staff to request employee documents via email.
 - Replies with the file as an email attachment, or suggests available files if not found
 - Logs activity to `logs/HR_Document_Request.log`
 
+### 4. Knowledge Base (`knowledge_base.py`)
+A hybrid RAG system where employees can upload documents and ask natural-language questions.
+
+**Upload Pipeline (dual):**
+- **Vector DB**: Document → Chunking (RecursiveCharacterTextSplitter) → Gemini Embeddings (`text-embedding-004`) → ChromaDB
+- **Knowledge Graph**: Document → Entity/Relationship Extraction (Gemini 2.5 Flash) → Neo4j Graph
+
+**Query Pipeline (hybrid):**
+1. Query → Gemini embedding → ChromaDB similarity search
+2. Query → Entity extraction → Neo4j graph traversal (1-2 hops)
+3. Results merged → LLM-based reranking → Context compression
+4. Grounded context → Gemini 2.5 Flash → Answer with citations
+
+**Modules:**
+| File | Purpose |
+|------|---------|
+| `kb_config.py` | Configuration, API keys, client initialization |
+| `kb_vector_store.py` | Chunking, embedding, ChromaDB operations |
+| `kb_knowledge_graph.py` | Neo4j entity extraction, storage, graph queries |
+| `kb_query_engine.py` | Retrieval, reranking, compression, answer generation |
+| `knowledge_base.py` | Streamlit UI page and pipeline orchestration |
+
 ---
 
 ## Orchestration (LangGraph)
@@ -154,6 +176,13 @@ GOOGLE_APPLICATION_CREDENTIALS=autocorp_storage.json
 
 GMAIL_USER=your@email.com
 GMAIL_PROCESSED_LABEL=HR-Auto/Processed
+
+# Knowledge Base
+GEMINI_API_KEY=your_gemini_api_key
+NEO4J_URI=bolt://localhost:7687
+NEO4J_USER=neo4j
+NEO4J_PASSWORD=your_neo4j_password
+CHROMA_PERSIST_DIR=./chroma_data
 ```
 
 ### 3. Set up Google OAuth
@@ -248,6 +277,9 @@ The dashboard writes this file on save. You can also edit it manually:
 | Layer | Technology |
 |---|---|
 | Orchestration | LangGraph (StateGraph) |
+| LLM / Embeddings | Gemini 2.5 Flash + text-embedding-004 |
+| Vector Store | ChromaDB |
+| Knowledge Graph | Neo4j |
 | Dashboard | Streamlit |
 | Email | Gmail API (OAuth2) |
 | Calendar | Google Calendar API |

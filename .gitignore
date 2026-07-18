@@ -1,0 +1,26 @@
+# Environment & secrets
+.env
+credentials.json
+token.json
+calendar_token.json
+autocorp_storage.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+venv/
+.venv/
+
+# ChromaDB persistent storage
+chroma_data/
+
+# Logs
+logs/
+
+# IDE
+.vscode/
+.idea/
+
+# Large media
+*.mp4

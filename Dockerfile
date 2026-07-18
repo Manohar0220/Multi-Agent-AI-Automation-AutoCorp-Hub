@@ -24,7 +24,9 @@ ENV CALENDAR_TOKEN_FILE=/app/calendar_token.json
 ENV GOOGLE_APPLICATION_CREDENTIALS=/app/autocorp_storage.json
 ENV PYTHONUTF8=1
 
-RUN mkdir -p logs
+RUN mkdir -p logs chroma_data
+
+VOLUME ["/app/chroma_data"]
 
 EXPOSE 8501
 

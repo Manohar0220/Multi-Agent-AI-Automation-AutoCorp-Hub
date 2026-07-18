@@ -55,7 +55,7 @@ def read_logs(agent_name):
 st.sidebar.title("AutoCorp Hub")
 page = st.sidebar.radio(
     "Navigation",
-    ["AI Automation Agents", "HR Agents","Dashboard"],
+    ["AI Automation Agents", "HR Agents", "Knowledge Base", "Dashboard"],
     label_visibility="collapsed"
 )
 
@@ -167,7 +167,12 @@ elif page == "HR Agents":
     log_text = read_logs("HR_Document_Request")
     st.text_area("Log Output", log_text, height=400)
 
-# --------------------------- Page 2: Dashboard --------------------------- #
+# --------------------------- Page 3: Knowledge Base ---------------------- #
+elif page == "Knowledge Base":
+    from knowledge_base import render_knowledge_base_page
+    render_knowledge_base_page()
+
+# --------------------------- Page 4: Dashboard --------------------------- #
 elif page == "Dashboard":
     st.title("📊 Active Agents Dashboard")
     st.caption("Monitor currently active agents and inspect their logs.")
