@@ -17,6 +17,7 @@ chroma_data/
 
 # Logs
 logs/
+.agents_config_*.tmp
 
 # IDE
 .vscode/

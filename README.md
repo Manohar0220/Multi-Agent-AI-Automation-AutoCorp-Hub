@@ -20,6 +20,7 @@ AutoCorp Hub is a multi-agent automation system with two major capabilities:
 autocorp-hub/
 ├── app.py                    # Streamlit dashboard (control plane)
 ├── orchestrator.py           # LangGraph StateGraph orchestrator
+├── polling_service.py        # Process-wide five-minute Gmail polling service
 ├── mail.py                   # Auto Mail Reply agent
 ├── meeting_scheduler.py      # Meeting Scheduler agent
 ├── HR_Document_Request.py    # HR Document Request agent
@@ -172,7 +173,13 @@ process_auto_replies
 [END]
 ```
 
-Each node only processes emails classified for it. The Streamlit dashboard invokes `run_orchestrator(config)` which compiles and runs the graph in a background thread.
+Each node only processes emails classified for it. After the user saves an active
+agent configuration, the Streamlit dashboard starts one process-wide polling
+thread. It invokes `run_orchestrator(config)` immediately and then every five
+minutes while at least one agent remains active. Saving an updated configuration
+wakes the poller immediately, and deactivating all agents stops it. The poller
+reloads `agents_config.json` before every run so sender-list changes take effect.
+Emails from senders outside a configured allowlist are left unread.
 
 ## Pipeline Flow (Legacy)
 
@@ -213,6 +220,7 @@ GMAIL_CREDENTIALS_FILE=credentials.json
 SENDER_EMAIL=your@email.com
 GMAIL_USER=your@email.com
 GMAIL_PROCESSED_LABEL=HR-Auto/Processed
+EMAIL_POLL_INTERVAL_SECONDS=300
 
 # Google Calendar
 CALENDAR_CREDENTIALS_FILE=credentials.json
@@ -262,6 +270,11 @@ Or use [Neo4j Aura](https://neo4j.com/cloud/aura/) (free tier available) and set
 ```bash
 streamlit run app.py
 ```
+
+Choose the agents and sender lists in the dashboard, then click **Save &
+Start/Update Agents**. Gmail is checked immediately and every five minutes after
+that. For local testing, `EMAIL_POLL_INTERVAL_SECONDS` can override the default
+300-second interval.
 
 ---
 

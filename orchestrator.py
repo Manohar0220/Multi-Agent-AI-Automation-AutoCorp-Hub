@@ -117,8 +117,10 @@ def process_meetings_node(state: OrchestratorState) -> dict:
     for email in meeting_emails:
         try:
             if specific_mode and email["sender_email"] not in allowed:
-                mark_as_read(gmail, email["msg_id"])
-                results.append(f"Meeting: skipped {email['sender_email']} (not in target list)")
+                results.append(
+                    f"Meeting: ignored {email['sender_email']} "
+                    "(not in target list; left unread)"
+                )
                 continue
 
             meeting_times = parse_meeting_datetime(email["body"])
@@ -168,8 +170,10 @@ def process_hr_node(state: OrchestratorState) -> dict:
     for email in hr_emails:
         try:
             if email["sender_email"] not in allowed_emails:
-                mark_as_read(gmail, email["msg_id"])
-                results.append(f"HR: skipped {email['sender_email']} (not in allowed list)")
+                results.append(
+                    f"HR: ignored {email['sender_email']} "
+                    "(not in allowed list; left unread)"
+                )
                 continue
 
             requested = extract_requested_filename(email["subject"])
@@ -241,8 +245,10 @@ def process_auto_reply_node(state: OrchestratorState) -> dict:
     for email in auto_emails:
         try:
             if specific_mode and email["sender_email"] not in allowed:
-                mark_as_read(gmail, email["msg_id"])
-                results.append(f"AutoReply: skipped {email['sender_email']} (not in target list)")
+                results.append(
+                    f"AutoReply: ignored {email['sender_email']} "
+                    "(not in target list; left unread)"
+                )
                 continue
 
             reply_body = "Thank you for your email. Our team will respond shortly."

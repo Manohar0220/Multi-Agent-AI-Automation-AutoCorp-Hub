@@ -1,5 +1,7 @@
 import streamlit as st
-import json, os, time, threading
+import json, os, time, tempfile
+
+from polling_service import configure_email_polling, get_email_polling_status
 
 CONFIG_FILE = "agents_config.json"
 LOG_DIR = "logs"
@@ -20,28 +22,29 @@ def load_config():
     }
 
 def save_config(config):
-    with open(CONFIG_FILE, "w") as f:
-        json.dump(config, f, indent=4)
-
-def run_orchestrator_background(config):
-    """Run the LangGraph orchestrator in a background thread and write results to log."""
-    from orchestrator import run_orchestrator
+    """Atomically save config so polling never reads a partial JSON file."""
+    config_dir = os.path.dirname(os.path.abspath(CONFIG_FILE))
+    fd, temp_path = tempfile.mkstemp(
+        prefix=".agents_config_", suffix=".tmp", dir=config_dir, text=True
+    )
     try:
-        results = run_orchestrator(config)
-        log_file = os.path.join(LOG_DIR, "orchestrator.log")
-        with open(log_file, "a", encoding="utf-8") as f:
-            for line in results:
-                f.write(line + "\n")
-    except Exception as e:
-        log_file = os.path.join(LOG_DIR, "orchestrator.log")
-        with open(log_file, "a", encoding="utf-8") as f:
-            f.write(f"ERROR: {e}\n")
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(config, f, indent=4)
+        os.replace(temp_path, CONFIG_FILE)
+    except Exception:
+        if os.path.exists(temp_path):
+            os.remove(temp_path)
+        raise
 
 def run_agents(config):
-    """Launch the LangGraph orchestrator to process all active agents."""
-    thread = threading.Thread(target=run_orchestrator_background, args=(config,), daemon=True)
-    thread.start()
-    st.toast("🚀 LangGraph orchestrator started!", icon="✅")
+    """Start, refresh, or stop the five-minute email polling service."""
+    action = configure_email_polling(config)
+    if action == "started":
+        st.toast("Email polling started. Checking now, then every 5 minutes.", icon="✅")
+    elif action == "updated":
+        st.toast("Agent settings updated. Checking Gmail again now.", icon="✅")
+    else:
+        st.toast("All agents are inactive. Email polling stopped.", icon="⏹️")
 
 def read_logs(agent_name):
     """Safely read log contents"""
@@ -123,11 +126,11 @@ if page == "AI Automation Agents":
     })
 
     st.divider()
-    if st.button("💾 Save & Run Active Agents"):
+    if st.button("💾 Save & Start/Update Agents"):
         save_config(config)
         st.success("Configuration saved successfully!")
         run_agents(config)
-        st.info("✅ LangGraph orchestrator processing active agents.")
+        st.info("Active agents check Gmail immediately and then every five minutes.")
 
 # --------------------------- Page 2: HR Agents --------------------------- #
 elif page == "HR Agents":
@@ -156,11 +159,11 @@ elif page == "HR Agents":
         "allowed_emails": allowed_emails_hr
     }
     st.divider()
-    if st.button("💾 Save & Run HR Agent"):
+    if st.button("💾 Save & Start/Update HR Agent"):
         save_config(config)
         st.success("Configuration saved successfully!")
         run_agents(config)
-        st.info("✅ LangGraph orchestrator processing HR agent.")
+        st.info("Active agents check Gmail immediately and then every five minutes.")
 
     st.divider()
     st.subheader("🧾 HR Document Request Logs")
@@ -176,6 +179,28 @@ elif page == "Knowledge Base":
 elif page == "Dashboard":
     st.title("📊 Active Agents Dashboard")
     st.caption("Monitor currently active agents and inspect their logs.")
+    st.divider()
+
+    polling_status = get_email_polling_status()
+    polling_label = "Running" if polling_status["running"] else "Stopped"
+    st.subheader("Email Polling Service")
+    col1, col2 = st.columns(2)
+    col1.metric("Status", polling_label)
+    col2.metric("Interval", f"{polling_status['interval_seconds'] // 60} minutes")
+    if polling_status.get("last_started_at"):
+        st.caption(f"Last check started: {polling_status['last_started_at']}")
+    if polling_status.get("next_check_at"):
+        st.caption(f"Next scheduled check: {polling_status['next_check_at']}")
+    if polling_status.get("last_error"):
+        st.error(f"Last polling error: {polling_status['last_error']}")
+    with st.expander("Email Polling Service Log"):
+        st.text_area(
+            "Polling Log",
+            read_logs("polling_service"),
+            height=160,
+            label_visibility="collapsed",
+        )
+
     st.divider()
 
     # Orchestrator log
