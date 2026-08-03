@@ -14,6 +14,46 @@ AutoCorp Hub is a multi-agent automation system with two major capabilities:
 
 ---
 
+## Architecture at a Glance
+
+```mermaid
+flowchart TB
+    User["Administrator / Employee"] --> UI["Streamlit Control Plane"]
+
+    UI --> AgentGuard["Activation + Sender Allowlist Guardrails"]
+    AgentGuard --> Poller["Five-Minute Email Poller"]
+    Poller --> LangGraph["LangGraph Email Orchestrator"]
+    LangGraph --> Agents["Auto Reply | Meeting | HR Document Agents"]
+    Agents --> Services["Gmail | Calendar | PostgreSQL | Cloud Storage"]
+
+    UI --> RAGGuard["RAG Guardrails + Access Control"]
+    RAGGuard --> Ingestion["Document Processing"]
+    Ingestion --> Registry["SQLite Document Registry"]
+    Ingestion --> Chroma["ChromaDB Vector Index"]
+    Ingestion --> Neo4j["Neo4j Knowledge Graph"]
+
+    RAGGuard --> Retrieval["Parallel Hybrid Retrieval"]
+    Chroma --> Retrieval
+    Neo4j --> Retrieval
+    Retrieval --> Ranking["RRF Fusion + Gemini Reranking"]
+    Ranking --> Generation["Grounded Gemini Answer"]
+    Generation --> Validation["Citation + Grounding + PII + Abstention"]
+    Validation --> UI
+
+    Retrieval -.-> Observability["Structured Traces + Metrics"]
+    Validation -.-> Observability
+    Evals["Offline Evals + Quality Gates"] -.-> Retrieval
+    Evals -.-> Validation
+```
+
+The control plane activates the email workflows and governs access to the hybrid
+RAG subsystem. Guardrails are applied before actions and retrieval, while
+citation/grounding validation protects the generated answer. Structured traces
+support operational monitoring, and the offline evaluation pipeline measures
+retrieval, graph, answer, citation, abstention, and latency quality.
+
+---
+
 ## Project Structure
 
 ```
