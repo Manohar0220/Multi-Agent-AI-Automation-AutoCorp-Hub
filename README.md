@@ -29,6 +29,13 @@ autocorp-hub/
 ├── kb_vector_store.py        # Chunking, Gemini embeddings, ChromaDB
 ├── kb_knowledge_graph.py     # Entity extraction, Neo4j graph operations
 ├── kb_query_engine.py        # Hybrid retrieval, reranking, answer generation
+├── kb_document_registry.py   # SQLite document versions and provenance
+├── kb_access_control.py      # Department/classification retrieval policy
+├── kb_guardrails.py          # Injection, citation, and PII guardrails
+├── kb_observability.py       # Structured per-query RAG traces
+├── kb_evaluation.py          # Offline RAG metrics and quality gates
+├── evaluate_rag.py           # Evaluation command-line entry point
+├── evals/                    # Golden-dataset schema and evaluation assets
 ├── db.py                     # PostgreSQL connection & queries
 ├── storage_client.py         # Google Cloud Storage client
 ├── parse_filename.py         # Email subject parser utility
@@ -38,11 +45,7 @@ autocorp-hub/
 ├── credentials.json          # Google OAuth2 credentials (not committed)
 ├── requirements.txt          # Python dependencies
 ├── Dockerfile                # Container image definition
-├── k8s/                      # Kubernetes deployment manifests
-│   ├── deployment.yaml
-│   ├── service.yaml
-│   ├── configmap.yaml
-│   └── secret.yaml
+├── autocorp deployment commands.txt  # GCP/GKE deployment runbook
 ├── chroma_data/              # ChromaDB persistent storage (auto-generated)
 └── logs/                     # Agent log files (auto-generated)
     ├── orchestrator.log
@@ -85,18 +88,23 @@ Allows authorized HR staff to request employee documents via email.
 A hybrid RAG system where employees can upload documents and ask natural-language questions.
 
 **Upload Pipeline (dual):**
+- **Governance**: file validation → prompt-injection scan → versioned document registry → classification metadata
 - **Vector DB**: Document → Chunking (RecursiveCharacterTextSplitter) → Gemini Embeddings (`text-embedding-004`) → ChromaDB
-- **Knowledge Graph**: Document → Entity/Relationship Extraction (Gemini 2.5 Flash) → Neo4j Graph
+- **Knowledge Graph**: Document → Entity/Relationship Extraction (Gemini 2.5 Flash) → Neo4j Graph + document provenance
 
 **Query Pipeline (hybrid):**
-1. Query → Gemini embedding → ChromaDB similarity search
-2. Query → Entity extraction → Neo4j graph traversal (1-2 hops)
-3. Results merged → LLM-based reranking → Context compression
-4. Grounded context → Gemini 2.5 Flash → Answer with citations
+1. Validate query → enforce department/classification access context
+2. In parallel: Gemini embedding → ChromaDB search, and entity extraction → Neo4j one-hop traversal
+3. Apply score thresholds and Reciprocal Rank Fusion (RRF)
+4. Gemini returns structured relevance scores → context compression with stable source IDs
+5. Gemini returns structured answer + citations → validate citations and groundedness
+6. Redact common PII patterns, abstain on weak evidence, and write a structured trace
 
 **Upload Architecture (dual pipeline, parallel):**
 ```
 Employee uploads document (PDF/DOCX/TXT/CSV)
+        │
+   Guardrail scan + document registry
         │
    extract_text_from_file()
         │
@@ -119,19 +127,21 @@ Employee uploads document (PDF/DOCX/TXT/CSV)
 ```
 Employee asks a question
         │
-   Gemini text-embedding-004 (task_type="retrieval_query")
+   Query guardrail + access policy
         │
-        ├──── ChromaDB similarity search (top 10 chunks)
+        ├──── Gemini embedding → ChromaDB search (fetch 30, retain top 10)
         │
         ├──── Neo4j graph traversal:
         │       Gemini extracts entities from query
         │       → fuzzy match nodes → 1-hop outgoing + incoming relationships
         │
-   Combine results → LLM-based reranking (Gemini re-scores by relevance)
+   Filter unauthorized/low-score evidence → RRF fusion
         │
-   Context compression (dedup + token budget)
+   Structured Gemini reranking → context compression with source IDs
         │
-   Gemini 2.5 Flash → grounded answer with citations
+   Gemini 2.5 Flash → JSON answer and citations
+        │
+   Citation verification → independent grounding check → PII redaction/abstention
 ```
 
 **Modules:**
@@ -140,8 +150,27 @@ Employee asks a question
 | `kb_config.py` | Configuration, API keys, lazy client initialization |
 | `kb_vector_store.py` | Chunking, Gemini embedding, ChromaDB storage/retrieval |
 | `kb_knowledge_graph.py` | Entity/relationship extraction, Neo4j storage, graph traversal |
-| `kb_query_engine.py` | Hybrid retrieval, LLM reranking, context compression, answer generation |
+| `kb_query_engine.py` | Parallel retrieval, RRF, structured reranking, grounded answer generation |
+| `kb_document_registry.py` | Versioned document metadata and lifecycle status |
+| `kb_access_control.py` | Department, clearance, and document-ID authorization |
+| `kb_guardrails.py` | Prompt-injection detection, citation validation, and PII redaction |
+| `kb_observability.py` | Privacy-conscious JSONL traces with hashed questions |
+| `kb_evaluation.py` | Retrieval, answer, citation, graph, abstention, and latency metrics |
 | `knowledge_base.py` | Streamlit UI (upload + chat) and pipeline orchestration |
+
+### RAG evaluation
+
+Create a golden JSONL dataset using `evals/README.md`, then run:
+
+```bash
+python evaluate_rag.py --dataset evals/rag_golden_dataset.jsonl
+```
+
+The default quality gates cover Recall@10, nDCG@10, answer token F1, and citation
+precision. Per-case reports also include Precision@5, Recall@5, MRR, correct
+abstention, graph relationship precision/recall/F1, and latency. Add
+`--llm-judge` to measure Gemini-scored correctness, faithfulness, and answer
+relevance. Reports are written to `evals/latest_report.json` by default.
 
 ---
 
@@ -196,7 +225,7 @@ python HR_Document_Request.py
 ## Setup
 
 ### Prerequisites
-- Python 3.9+
+- Python 3.10+ (matches the Docker image)
 - PostgreSQL database with an `employees` table
 - Google Cloud project with Gmail API, Calendar API, and Cloud Storage enabled
 - GCP service account with access to the GCS bucket
@@ -248,6 +277,26 @@ NEO4J_PASSWORD=your_neo4j_password
 
 # Knowledge Base — ChromaDB
 CHROMA_PERSIST_DIR=./chroma_data
+
+# Knowledge Base — production RAG controls
+RAG_VECTOR_TOP_K=10
+RAG_VECTOR_FETCH_K=30
+RAG_RERANK_TOP_K=15
+RAG_MIN_VECTOR_SCORE=0.25
+RAG_MIN_RERANK_SCORE=0.35
+RAG_MIN_GROUNDING_SCORE=0.80
+RAG_RRF_K=60
+RAG_MAX_QUERY_CHARS=2000
+RAG_MAX_UPLOAD_BYTES=10485760
+RAG_MAX_RETRIES=3
+RAG_RETRY_BASE_SECONDS=0.5
+RAG_ENABLE_GROUNDING_CHECK=true
+KB_DEFAULT_DEPARTMENT=general
+KB_DEFAULT_CLEARANCE=internal
+
+# Optional cost estimates; set these to the current model rates
+RAG_INPUT_COST_PER_MILLION=0
+RAG_OUTPUT_COST_PER_MILLION=0
 ```
 
 ### 3. Set up Google OAuth
@@ -317,11 +366,9 @@ docker run --env-file .env -p 8501:8501 autocorp-hub
 
 ### Kubernetes
 
-```bash
-kubectl apply -f k8s/
-```
-
-Manifests include `deployment.yaml`, `service.yaml`, `configmap.yaml`, and `secret.yaml`.
+`autocorp deployment commands.txt` documents the intended GKE, Cloud SQL proxy,
+Artifact Registry, and Kubernetes workflow. Deployment manifests are not included
+in this repository and must be created and reviewed before a Kubernetes release.
 
 ---
 

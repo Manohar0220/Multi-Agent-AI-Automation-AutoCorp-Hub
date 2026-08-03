@@ -1,0 +1,23 @@
+.git
+.gitignore
+.venv
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+
+# Runtime state
+logs/
+chroma_data/
+evals/latest_report.json
+
+# Local credentials and tokens must never be baked into the image
+.env
+credentials.json
+token.json
+calendar_token.json
+autocorp_storage.json
+
+# Reports and demo media are not runtime dependencies
+*.pdf
+*.mp4

@@ -5,8 +5,8 @@ protobuf==5.28.3
 requests==2.32.3
 
 # LangGraph orchestration
-langgraph>=0.2.0
-langchain-core>=0.3.0
+langgraph==0.2.76
+langchain-core==0.3.39
 
 # Google API libraries
 google-auth==2.35.0
@@ -15,21 +15,22 @@ google-api-python-client==2.147.0
 google-cloud-storage==2.18.2
 
 # Gemini AI (embeddings + generation)
-google-generativeai>=0.8.0
+google-generativeai==0.8.4
 
 # Vector store
-chromadb>=0.5.0
+chromadb==0.5.23
+posthog==3.7.0
 
 # Knowledge Graph
-neo4j>=5.0.0
+neo4j==5.28.1
 
 # Document processing
-PyPDF2>=3.0.0
-python-docx>=1.0.0
-pandas>=2.0.0
+PyPDF2==3.0.1
+python-docx==1.1.2
+pandas==2.2.3
 
 # Text splitting
-langchain-text-splitters>=0.3.0
+langchain-text-splitters==0.3.6
 
 # Database
 psycopg2-binary==2.9.10

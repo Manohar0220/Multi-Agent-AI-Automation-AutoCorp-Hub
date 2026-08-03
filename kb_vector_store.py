@@ -61,10 +61,19 @@ def store_chunks_in_chroma(chunks: list, embeddings: list):
     documents = []
     metadatas = []
     for chunk in chunks:
-        chunk_id = hashlib.md5(chunk["text"].encode()).hexdigest()
+        metadata = chunk["metadata"]
+        identity = ":".join(
+            [
+                str(metadata.get("document_id") or metadata.get("source") or "legacy"),
+                str(metadata.get("version") or 1),
+                str(metadata.get("chunk_index") or 0),
+                chunk["text"],
+            ]
+        )
+        chunk_id = hashlib.sha256(identity.encode("utf-8")).hexdigest()
         ids.append(chunk_id)
         documents.append(chunk["text"])
-        metadatas.append(chunk["metadata"])
+        metadatas.append(metadata)
 
     collection.upsert(
         ids=ids,
@@ -99,5 +108,6 @@ def query_chroma(query_embedding: list, n_results: int = 10) -> list:
                 "text": doc,
                 "metadata": meta,
                 "score": 1 - dist,
+                "distance": dist,
             })
     return output

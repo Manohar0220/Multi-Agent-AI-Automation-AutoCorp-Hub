@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import json
 import os
 import re
@@ -13,7 +15,7 @@ from meeting_scheduler import (
     check_calendar_conflict,
     schedule_calendar_event,
 )
-from HR_Document_Request import send_reply_with_attachment, load_allowed_emails
+from HR_Document_Request import send_reply_with_attachment
 from parse_filename import extract_requested_filename
 from db import get_employee_id_by_email
 from storage_client import fetch_employee_file, list_employee_files
@@ -76,7 +78,6 @@ def fetch_emails_node(state: OrchestratorState) -> dict:
 
 def classify_emails_node(state: OrchestratorState) -> dict:
     classified: Dict[str, List[EmailItem]] = {"meeting": [], "hr": [], "auto_reply": []}
-    config = state["config"]
 
     for email in state["emails"]:
         subj_lower = email["subject"].lower()

@@ -19,6 +19,9 @@ chroma_data/
 logs/
 .agents_config_*.tmp
 
+# Generated evaluation reports
+evals/latest_report.json
+
 # IDE
 .vscode/
 .idea/
